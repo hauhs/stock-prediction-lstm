@@ -97,90 +97,284 @@ def main():
     
     # 侧边栏配置
     with st.sidebar:
-        st.header("⚙️ 参数设置")
-        
-        # 股票选择
-        st.subheader("📊 股票选择")
-        
-        # 预设股票列表
-        preset_stocks = list(STOCK_MAPPING.keys())
-        preset_display = [f"{code} - {name}" for code, name in STOCK_MAPPING.items()]
-        
-        use_preset = st.checkbox("使用预设股票", value=True)
-        
-        if use_preset:
-            selected_display = st.selectbox(
-                "选择股票",
-                preset_display,
-                index=0
-            )
-            stock_symbol = selected_display.split(" - ")[0]
-        else:
-            stock_symbol = st.text_input(
-                "输入股票代码",
-                value="AAPL",
-                help="美股直接输入代码如AAPL，A股需加后缀如600519.SS(上海)或000001.SZ(深圳)"
-            )
-        
+        st.header("🧭 功能导航")
+        menu = st.radio(
+            "选择功能板块",
+            ["🔮 股价预测与实验对比", "📥 历史数据一键导出"],
+            index=0
+        )
         st.divider()
         
-        # 日期范围
-        st.subheader("📅 日期范围")
-        st.caption("提示：股票数据可追溯到1990年，但具体时间范围取决于数据源")
-        
-        col1, col2 = st.columns(2)
-        with col1:
-            start_date = st.date_input(
-                "开始日期",
-                value=datetime.now() - timedelta(days=365*2),
-                min_value=datetime(1990, 1, 1),
-                max_value=datetime.now()
-            )
-        with col2:
-            end_date = st.date_input(
-                "结束日期",
-                value=datetime.now(),
-                min_value=datetime(1990, 1, 1),
-                max_value=datetime.now()
-            )
-        
-        st.divider()
-        
-        # 模型参数
-        st.subheader("🧠 模型参数")
-        
-        seq_length = st.slider(
-            "序列长度（天）",
-            min_value=10,
-            max_value=200,
-            value=60,
-            step=5,
-            help="用于预测的历史数据天数，建议30-120天"
-        )
-        
-        epochs = st.slider(
-            "训练轮数",
-            min_value=5,
-            max_value=200,
-            value=50,
-            step=5,
-            help="模型训练的迭代次数，越多越精确但耗时越长"
-        )
-        
-        future_days = st.slider(
-            "预测天数",
-            min_value=1,
-            max_value=120,
-            value=30,
-            step=1,
-            help="预测未来多少天的股价，时间越长不确定性越大"
-        )
-        
-        st.divider()
-        
-        # 开始预测按钮
-        predict_btn = st.button("🚀 开始预测", type="primary", use_container_width=True)
+    # 初始化变量以防作用域报错
+    predict_btn = False
+    stock_symbol = "AAPL"
+    start_date = datetime.now() - timedelta(days=365*2)
+    end_date = datetime.now()
+    seq_length = 60
+    epochs = 50
+    future_days = 30
     
+    if menu == "🔮 股价预测与实验对比":
+        with st.sidebar:
+            st.header("⚙️ 参数设置")
+            
+            # 股票选择
+            st.subheader("📊 股票选择")
+            
+            # 预设股票列表
+            preset_stocks = list(STOCK_MAPPING.keys())
+            preset_display = [f"{code} - {name}" for code, name in STOCK_MAPPING.items()]
+            
+            use_preset = st.checkbox("使用预设股票", value=True)
+            
+            if use_preset:
+                selected_display = st.selectbox(
+                    "选择股票",
+                    preset_display,
+                    index=0
+                )
+                stock_symbol = selected_display.split(" - ")[0]
+            else:
+                stock_symbol = st.text_input(
+                    "输入股票代码",
+                    value="AAPL",
+                    help="美股直接输入代码如AAPL，A股需加后缀如600519.SS(上海)或000001.SZ(深圳)"
+                )
+            
+            st.divider()
+            
+            # 日期范围
+            st.subheader("📅 日期范围")
+            st.caption("提示：股票数据可追溯到1990年，但具体时间范围取决于数据源")
+            
+            col1, col2 = st.columns(2)
+            with col1:
+                start_date = st.date_input(
+                    "开始日期",
+                    value=datetime.now() - timedelta(days=365*2),
+                    min_value=datetime(1990, 1, 1),
+                    max_value=datetime.now()
+                )
+            with col2:
+                end_date = st.date_input(
+                    "结束日期",
+                    value=datetime.now(),
+                    min_value=datetime(1990, 1, 1),
+                    max_value=datetime.now()
+                )
+            
+            st.divider()
+            
+            # 模型参数
+            st.subheader("🧠 模型参数")
+            
+            seq_length = st.slider(
+                "序列长度（天）",
+                min_value=10,
+                max_value=200,
+                value=60,
+                step=5,
+                help="用于预测的历史数据天数，建议30-120天"
+            )
+            
+            epochs = st.slider(
+                "训练轮数",
+                min_value=5,
+                max_value=200,
+                value=50,
+                step=5,
+                help="模型训练的迭代次数，越多越精确但耗时越长"
+            )
+            
+            future_days = st.slider(
+                "预测天数",
+                min_value=1,
+                max_value=120,
+                value=30,
+                step=1,
+                help="预测未来多少天的股价，时间越长不确定性越大"
+            )
+            
+            st.divider()
+            
+            # 开始预测按钮
+            predict_btn = st.button("🚀 开始预测", type="primary", use_container_width=True)
+
+    elif menu == "📥 历史数据一键导出":
+        st.subheader("📥 股票历史数据查询与导出")
+        st.caption("输入股票代码和日期区间，快速预览并以 CSV / Excel 格式下载历史行情数据")
+        
+        # 参数配置区域
+        col_select, col_range = st.columns(2)
+        with col_select:
+            st.markdown("### 📊 1. 选择股票")
+            use_preset_export = st.checkbox("使用预设股票", value=True, key="export_use_preset")
+            if use_preset_export:
+                preset_display_export = [f"{code} - {name}" for code, name in STOCK_MAPPING.items()]
+                selected_display_export = st.selectbox(
+                    "选择股票",
+                    preset_display_export,
+                    index=0,
+                    key="export_preset_selectbox"
+                )
+                stock_symbol_export = selected_display_export.split(" - ")[0]
+            else:
+                stock_symbol_export = st.text_input(
+                    "输入股票代码",
+                    value="AAPL",
+                    help="美股直接输入代码如AAPL，A股需加后缀如600519.SS(上海)或000001.SZ(深圳)",
+                    key="export_custom_input"
+                )
+        with col_range:
+            st.markdown("### 📅 2. 日期区间")
+            col_start, col_end = st.columns(2)
+            with col_start:
+                start_date_export = st.date_input(
+                    "开始日期",
+                    value=datetime.now() - timedelta(days=365*2),
+                    min_value=datetime(1990, 1, 1),
+                    max_value=datetime.now(),
+                    key="export_start_date"
+                )
+            with col_end:
+                end_date_export = st.date_input(
+                    "结束日期",
+                    value=datetime.now(),
+                    min_value=datetime(1990, 1, 1),
+                    max_value=datetime.now(),
+                    key="export_end_date"
+                )
+            
+            include_indicators = st.checkbox(
+                "同时计算并包含技术指标 (MA5, MA10, MA20, MACD, RSI, 波动率)",
+                value=False,
+                key="export_include_indicators",
+                help="如果勾选，导出的数据中将包含计算好的技术指标，方便直接用于研究分析。"
+            )
+            
+        st.divider()
+        
+        # 查询按钮
+        if st.button("🔍 查询历史数据", type="primary", use_container_width=True):
+            if start_date_export > end_date_export:
+                st.error("❌ 开始日期不能晚于结束日期，请重新选择！")
+            else:
+                with st.spinner("📥 正在拉取数据，请稍候..."):
+                    try:
+                        df_export = get_stock_data(
+                            stock_symbol_export,
+                            start_date_export.strftime('%Y-%m-%d'),
+                            end_date_export.strftime('%Y-%m-%d')
+                        )
+                        
+                        if include_indicators:
+                            df_export = calculate_technical_indicators(df_export)
+                            
+                        # 计算涨跌幅 (%) 并保留 2 位小数
+                        df_export['Daily_Return'] = (df_export['Close'].pct_change() * 100).round(2)
+                        
+                        # 格式化日期列，去除时间部分的 00:00:00，转换为字符串
+                        df_export['Date'] = pd.to_datetime(df_export['Date']).dt.strftime('%Y-%m-%d')
+                        
+                        # 重命名六个核心表头和新添加的涨跌幅表头为中文
+                        rename_dict = {
+                            'Date': '日期',
+                            'Open': '开盘价',
+                            'High': '最高价',
+                            'Low': '最低价',
+                            'Close': '收盘价',
+                            'Volume': '成交量',
+                            'Daily_Return': '涨跌幅(%)'
+                        }
+                        df_export = df_export.rename(columns=rename_dict)
+                        
+                        # 确保核心列位于最前，把涨跌幅加在核心 6 个字段的最后，之后再追加其他技术指标
+                        core_cols = ['日期', '开盘价', '最高价', '最低价', '收盘价', '成交量', '涨跌幅(%)']
+                        other_cols = [col for col in df_export.columns if col not in core_cols]
+                        df_export = df_export[core_cols + other_cols]
+                        
+                        # 按日期进行倒序排列，使最新的日期排在最前面
+                        df_export = df_export.sort_values(by='日期', ascending=False)
+                            
+                        st.session_state['export_df'] = df_export
+                        st.session_state['export_symbol'] = stock_symbol_export
+                        st.session_state['export_start'] = start_date_export
+                        st.session_state['export_end'] = end_date_export
+                        st.success(f"✅ 成功获取 {stock_symbol_export} 的历史数据，共 {len(df_export)} 条记录！")
+                    except Exception as e:
+                        st.error(f"❌ 数据获取失败: {str(e)}")
+                        
+        # 结果展示与导出区域
+        if 'export_df' in st.session_state and st.session_state.get('export_symbol') == stock_symbol_export:
+            df_export = st.session_state['export_df']
+            
+            # 显示数据基本信息
+            st.markdown("### 📊 数据概览")
+            meta_col1, meta_col2, meta_col3, meta_col4 = st.columns(4)
+            with meta_col1:
+                st.metric("总交易天数", f"{len(df_export)} 天")
+            with meta_col2:
+                # 此时 Close 已经被改名为 收盘价，所以这里应该读取 收盘价 列
+                st.metric("期间最高收盘价", f"${df_export['收盘价'].max():.2f}")
+            with meta_col3:
+                st.metric("期间最低收盘价", f"${df_export['收盘价'].min():.2f}")
+            with meta_col4:
+                st.metric("均值收盘价", f"${df_export['收盘价'].mean():.2f}")
+                
+            # 提供下载按钮
+            st.markdown("### 💾 导出数据")
+            dl_col1, dl_col2, _ = st.columns([1, 1, 2])
+            
+            # 导出 CSV
+            csv_data = df_export.to_csv(index=False).encode('utf-8-sig') # utf-8-sig 可以防止 Excel 打开时中文乱码
+            with dl_col1:
+                st.download_button(
+                    label="📥 下载 CSV 格式文件",
+                    data=csv_data,
+                    file_name=f"{stock_symbol_export}_history_{start_date_export}_{end_date_export}.csv",
+                    mime="text/csv",
+                    use_container_width=True
+                )
+                
+            # 导出 Excel
+            try:
+                import io
+                buffer = io.BytesIO()
+                with pd.ExcelWriter(buffer, engine='openpyxl') as writer:
+                    df_export.to_excel(writer, index=False, sheet_name='Stock_History')
+                excel_data = buffer.getvalue()
+                
+                with dl_col2:
+                    st.download_button(
+                        label="📥 下载 Excel 格式文件",
+                        data=excel_data,
+                        file_name=f"{stock_symbol_export}_history_{start_date_export}_{end_date_export}.xlsx",
+                        mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+                        use_container_width=True
+                    )
+            except Exception as e:
+                with dl_col2:
+                    st.error(f"Excel 导出组件加载失败: {str(e)}")
+                    st.info("如有需要，请先下载 CSV 格式。")
+            
+            # 显示数据预览
+            st.markdown("### 👁️ 数据预览 (最新 100 条)")
+            st.dataframe(df_export.sort_values(by='日期', ascending=False).head(100), use_container_width=True)
+
+    # 引导与指引主页面（当在预测界面但还没点击预测按钮时）
+    if menu == "🔮 股价预测与实验对比" and not predict_btn:
+        st.info("👈 请在左侧侧边栏选择股票并设置参数，然后点击 '🚀 开始预测' 按钮启动预测。")
+        st.markdown("""
+        ### 💡 系统简介
+        本系统是一个基于 LSTM 深度学习网络的股票价格预测与分析平台，支持以下功能：
+        1. **多维度预测**：使用 LSTM 模型预测未来股价走势。
+        2. **K线图表展示**：提供交互式 K 线图、技术指标、历史价格对比图。
+        3. **技术指标分析**：自动计算 MA、RSI、MACD 等主流技术指标。
+        4. **风险量化分析**：计算年化波动率、最大回撤、VaR(95%) 风险值等。
+        5. **智能投资建议**：根据技术指标与预测走势，生成综合评分与建议。
+        6. **实验对比分析**：支持不同序列长度 and 训练轮数的对比实验。
+        """)
+
     # 主内容区域
     if predict_btn:
         try:
