@@ -202,7 +202,7 @@ def main():
 
     elif menu == "📥 历史数据一键导出":
         st.subheader("📥 股票历史数据查询与导出")
-        st.caption("输入股票代码和日期区间，快速预览并以 CSV / Excel 格式下载历史行情数据")
+        st.caption("输入或多选股票代码，选定日期区间，可一键查询并在不同表格（选项卡）中预览，支持导出为 ZIP(各股独立CSV) 和多工作表(Sheet)的 Excel 文件")
         
         # 参数配置区域
         col_select, col_range = st.columns(2)
@@ -211,20 +211,21 @@ def main():
             use_preset_export = st.checkbox("使用预设股票", value=True, key="export_use_preset")
             if use_preset_export:
                 preset_display_export = [f"{code} - {name}" for code, name in STOCK_MAPPING.items()]
-                selected_display_export = st.selectbox(
-                    "选择股票",
+                selected_displays_export = st.multiselect(
+                    "选择股票（可多选）",
                     preset_display_export,
-                    index=0,
+                    default=[preset_display_export[0]],
                     key="export_preset_selectbox"
                 )
-                stock_symbol_export = selected_display_export.split(" - ")[0]
+                stock_symbols_export = [disp.split(" - ")[0] for disp in selected_displays_export]
             else:
-                stock_symbol_export = st.text_input(
+                stock_input = st.text_input(
                     "输入股票代码",
                     value="AAPL",
-                    help="美股直接输入代码如AAPL，A股需加后缀如600519.SS(上海)或000001.SZ(深圳)",
+                    help="支持多只股票，用空格、逗号或分号分隔。例如：AAPL, TSLA, 600519.SS",
                     key="export_custom_input"
                 )
+                stock_symbols_export = [s.strip().upper() for s in stock_input.replace(',', ' ').replace(';', ' ').replace('，', ' ').replace('；', ' ').replace('、', ' ').split() if s.strip()]
         with col_range:
             st.markdown("### 📅 2. 日期区间")
             col_start, col_end = st.columns(2)
@@ -256,110 +257,143 @@ def main():
         
         # 查询按钮
         if st.button("🔍 查询历史数据", type="primary", use_container_width=True):
-            if start_date_export > end_date_export:
+            if len(stock_symbols_export) == 0:
+                st.error("❌ 请至少选择或输入一只股票代码！")
+            elif start_date_export > end_date_export:
                 st.error("❌ 开始日期不能晚于结束日期，请重新选择！")
             else:
                 with st.spinner("📥 正在拉取数据，请稍候..."):
-                    try:
-                        df_export = get_stock_data(
-                            stock_symbol_export,
-                            start_date_export.strftime('%Y-%m-%d'),
-                            end_date_export.strftime('%Y-%m-%d')
-                        )
-                        
-                        if include_indicators:
-                            df_export = calculate_technical_indicators(df_export)
+                    export_dfs = {}
+                    failed_stocks = []
+                    
+                    for symbol in stock_symbols_export:
+                        try:
+                            df_temp = get_stock_data(
+                                symbol,
+                                start_date_export.strftime('%Y-%m-%d'),
+                                end_date_export.strftime('%Y-%m-%d')
+                            )
                             
-                        # 计算涨跌幅 (%) 并保留 2 位小数
-                        df_export['Daily_Return'] = (df_export['Close'].pct_change() * 100).round(2)
-                        
-                        # 格式化日期列，去除时间部分的 00:00:00，转换为字符串
-                        df_export['Date'] = pd.to_datetime(df_export['Date']).dt.strftime('%Y-%m-%d')
-                        
-                        # 重命名六个核心表头和新添加的涨跌幅表头为中文
-                        rename_dict = {
-                            'Date': '日期',
-                            'Open': '开盘价',
-                            'High': '最高价',
-                            'Low': '最低价',
-                            'Close': '收盘价',
-                            'Volume': '成交量',
-                            'Daily_Return': '涨跌幅(%)'
-                        }
-                        df_export = df_export.rename(columns=rename_dict)
-                        
-                        # 确保核心列位于最前，把涨跌幅加在核心 6 个字段的最后，之后再追加其他技术指标
-                        core_cols = ['日期', '开盘价', '最高价', '最低价', '收盘价', '成交量', '涨跌幅(%)']
-                        other_cols = [col for col in df_export.columns if col not in core_cols]
-                        df_export = df_export[core_cols + other_cols]
-                        
-                        # 按日期进行倒序排列，使最新的日期排在最前面
-                        df_export = df_export.sort_values(by='日期', ascending=False)
+                            if include_indicators:
+                                df_temp = calculate_technical_indicators(df_temp)
+                                
+                            # 计算涨跌幅 (%) 并保留 2 位小数
+                            df_temp['Daily_Return'] = (df_temp['Close'].pct_change() * 100).round(2)
                             
-                        st.session_state['export_df'] = df_export
-                        st.session_state['export_symbol'] = stock_symbol_export
+                            # 格式化日期列，去除时间部分的 00:00:00，转换为字符串
+                            df_temp['Date'] = pd.to_datetime(df_temp['Date']).dt.strftime('%Y-%m-%d')
+                            
+                            # 重命名六个核心表头和新添加的涨跌幅表头为中文
+                            rename_dict = {
+                                'Date': '日期',
+                                'Open': '开盘价',
+                                'High': '最高价',
+                                'Low': '最低价',
+                                'Close': '收盘价',
+                                'Volume': '成交量',
+                                'Daily_Return': '涨跌幅(%)'
+                            }
+                            df_temp = df_temp.rename(columns=rename_dict)
+                            
+                            # 确保核心列位于最前，把涨跌幅加在核心 6 个字段的最后，之后再追加其他技术指标
+                            core_cols = ['日期', '开盘价', '最高价', '最低价', '收盘价', '成交量', '涨跌幅(%)']
+                            other_cols = [col for col in df_temp.columns if col not in core_cols]
+                            df_temp = df_temp[core_cols + other_cols]
+                            
+                            # 按日期进行倒序排列，使最新的日期排在最前面
+                            df_temp = df_temp.sort_values(by='日期', ascending=False)
+                            
+                            export_dfs[symbol] = df_temp
+                        except Exception as e:
+                            failed_stocks.append(f"{symbol} ({str(e)})")
+                            
+                    if export_dfs:
+                        st.session_state['export_dfs'] = export_dfs
+                        st.session_state['export_symbols'] = stock_symbols_export
                         st.session_state['export_start'] = start_date_export
                         st.session_state['export_end'] = end_date_export
-                        st.success(f"✅ 成功获取 {stock_symbol_export} 的历史数据，共 {len(df_export)} 条记录！")
-                    except Exception as e:
-                        st.error(f"❌ 数据获取失败: {str(e)}")
+                        
+                        success_msg = f"✅ 成功获取 {len(export_dfs)} 只股票的历史数据！"
+                        if failed_stocks:
+                            success_msg += f" (另外 {len(failed_stocks)} 只获取失败: {', '.join(failed_stocks)})"
+                        st.success(success_msg)
+                    else:
+                        st.error(f"❌ 所有股票数据拉取均失败：{', '.join(failed_stocks)}")
                         
         # 结果展示与导出区域
-        if 'export_df' in st.session_state and st.session_state.get('export_symbol') == stock_symbol_export:
-            df_export = st.session_state['export_df']
+        if 'export_dfs' in st.session_state and st.session_state.get('export_symbols') == stock_symbols_export:
+            export_dfs = st.session_state['export_dfs']
             
-            # 显示数据基本信息
-            st.markdown("### 📊 数据概览")
-            meta_col1, meta_col2, meta_col3, meta_col4 = st.columns(4)
-            with meta_col1:
-                st.metric("总交易天数", f"{len(df_export)} 天")
-            with meta_col2:
-                # 此时 Close 已经被改名为 收盘价，所以这里应该读取 收盘价 列
-                st.metric("期间最高收盘价", f"${df_export['收盘价'].max():.2f}")
-            with meta_col3:
-                st.metric("期间最低收盘价", f"${df_export['收盘价'].min():.2f}")
-            with meta_col4:
-                st.metric("均值收盘价", f"${df_export['收盘价'].mean():.2f}")
-                
             # 提供下载按钮
             st.markdown("### 💾 导出数据")
             dl_col1, dl_col2, _ = st.columns([1, 1, 2])
             
-            # 导出 CSV
-            csv_data = df_export.to_csv(index=False).encode('utf-8-sig') # utf-8-sig 可以防止 Excel 打开时中文乱码
-            with dl_col1:
-                st.download_button(
-                    label="📥 下载 CSV 格式文件",
-                    data=csv_data,
-                    file_name=f"{stock_symbol_export}_history_{start_date_export}_{end_date_export}.csv",
-                    mime="text/csv",
-                    use_container_width=True
-                )
+            # 导出 CSV (若多只股票，则打包为 ZIP，内含每只股票独立的 CSV)
+            try:
+                import zipfile
+                import io
+                zip_buffer = io.BytesIO()
+                with zipfile.ZipFile(zip_buffer, 'w', zipfile.ZIP_DEFLATED) as zip_file:
+                    for symbol, df in export_dfs.items():
+                        csv_string = df.to_csv(index=False).encode('utf-8-sig')
+                        zip_file.writestr(f"{symbol}_history_{start_date_export}_{end_date_export}.csv", csv_string)
+                zip_data = zip_buffer.getvalue()
                 
-            # 导出 Excel
+                with dl_col1:
+                    st.download_button(
+                        label="📥 下载 CSV 数据压缩包 (ZIP)",
+                        data=zip_data,
+                        file_name=f"stocks_history_{start_date_export}_{end_date_export}.zip",
+                        mime="application/zip",
+                        use_container_width=True
+                    )
+            except Exception as e:
+                with dl_col1:
+                    st.error(f"CSV 打包 ZIP 失败: {str(e)}")
+                
+            # 导出 Excel (每一只股票单独作为一个 Sheet 写入同一 Excel 工作簿中)
             try:
                 import io
-                buffer = io.BytesIO()
-                with pd.ExcelWriter(buffer, engine='openpyxl') as writer:
-                    df_export.to_excel(writer, index=False, sheet_name='Stock_History')
-                excel_data = buffer.getvalue()
+                excel_buffer = io.BytesIO()
+                with pd.ExcelWriter(excel_buffer, engine='openpyxl') as writer:
+                    for symbol, df in export_dfs.items():
+                        df.to_excel(writer, index=False, sheet_name=symbol)
+                excel_data = excel_buffer.getvalue()
                 
                 with dl_col2:
                     st.download_button(
-                        label="📥 下载 Excel 格式文件",
+                        label="📥 下载多表格 Excel 文件 (XLSX)",
                         data=excel_data,
-                        file_name=f"{stock_symbol_export}_history_{start_date_export}_{end_date_export}.xlsx",
+                        file_name=f"stocks_history_{start_date_export}_{end_date_export}.xlsx",
                         mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
                         use_container_width=True
                     )
             except Exception as e:
                 with dl_col2:
                     st.error(f"Excel 导出组件加载失败: {str(e)}")
-                    st.info("如有需要，请先下载 CSV 格式。")
             
-            # 显示数据预览
-            st.markdown("### 👁️ 数据预览 (最新 100 条)")
-            st.dataframe(df_export.sort_values(by='日期', ascending=False).head(100), use_container_width=True)
+            st.divider()
+            
+            # 各股票数据概览与预览 (采用选项卡 st.tabs 分类展示)
+            st.markdown("### 👁️ 数据概览与预览")
+            tab_list = st.tabs([f"📊 {sym}" for sym in export_dfs.keys()])
+            
+            for idx, (symbol, df) in enumerate(export_dfs.items()):
+                with tab_list[idx]:
+                    # 显示数据基本信息
+                    meta_col1, meta_col2, meta_col3, meta_col4 = st.columns(4)
+                    with meta_col1:
+                        st.metric("总交易天数", f"{len(df)} 天")
+                    with meta_col2:
+                        st.metric("期间最高收盘价", f"${df['收盘价'].max():.2f}")
+                    with meta_col3:
+                        st.metric("期间最低收盘价", f"${df['收盘价'].min():.2f}")
+                    with meta_col4:
+                        st.metric("均值收盘价", f"${df['收盘价'].mean():.2f}")
+                    
+                    # 预览数据 (最新 100 条)
+                    st.markdown(f"**{symbol} 的历史数据预览 (最新 100 条)**")
+                    st.dataframe(df.head(100), use_container_width=True)
 
     # 引导与指引主页面（当在预测界面但还没点击预测按钮时）
     if menu == "🔮 股价预测与实验对比" and not predict_btn:
